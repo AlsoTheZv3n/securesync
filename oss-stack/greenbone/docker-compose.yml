@@ -12,14 +12,18 @@
 # Reference: https://greenbone.github.io/docs/latest/22.4/container/
 #
 # Bring up:
+#   cp ../../.env.example ../../.env      # if you haven't already
+#   # fill in GREENBONE_PASSWORD and GREENBONE_PG_PASSWORD
 #   cd oss-stack/greenbone
 #   docker compose up -d
 #   # wait for feed sync (watch logs of `gvmd`):
 #   docker compose logs -f gvmd
 #
-# Default credentials (CHANGE before production):
-#   user: admin
-#   pass: ${GREENBONE_PASSWORD}  (defaults to "admin" in dev)
+# Credentials: the compose REQUIRES GREENBONE_PASSWORD and
+# GREENBONE_PG_PASSWORD to be set in the project-root .env. If either is
+# missing, docker compose will refuse to start with a clear error message.
+# There are intentionally NO fallback defaults — shipping "admin/admin" as
+# a valid runtime state would be a vulnerability scanner left wide open.
 # ============================================================
 
 networks:

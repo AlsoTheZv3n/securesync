@@ -9,12 +9,15 @@
 # Reference: https://github.com/wazuh/wazuh-docker/tree/v4.8.0/single-node
 #
 # Bring up:
+#   cp ../../.env.example ../../.env      # if you haven't already
+#   # fill in WAZUH_PASSWORD, WAZUH_INDEXER_PASSWORD, WAZUH_DASHBOARD_PASSWORD
 #   cd oss-stack/wazuh
 #   docker compose up -d
 #
-# Credentials (CHANGE before production):
-#   API user:  ${WAZUH_USERNAME}   default: wazuh-wui
-#   API pass:  ${WAZUH_PASSWORD}   default: MyS3cr37P450r.*-
+# Credentials: all WAZUH_*_PASSWORD vars are REQUIRED — docker compose
+# refuses to start if any are missing. There are intentionally NO fallback
+# defaults. WAZUH_USERNAME defaults to the stock "wazuh-wui" because that's
+# the Wazuh project's documented API user name, not a secret.
 # ============================================================
 
 networks:
