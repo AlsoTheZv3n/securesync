@@ -1,0 +1,125 @@
+# ============================================================
+# SecureSync — NEXO AI .gitignore
+# ============================================================
+
+# ── Secrets — NEVER COMMIT ───────────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials.json
+service-account*.json
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.egg
+
+# ── Python Testing ───────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# ── Node / Next.js ───────────────────────────────────────────
+node_modules/
+.next/
+.nuxt/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp/
+.pnp.js
+*.tsbuildinfo
+
+# ── Playwright ───────────────────────────────────────────────
+playwright-report/
+test-results/
+playwright/.cache/
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────────
+# Keep docker-compose.yml and docker-compose.dev.yml tracked;
+# ignore local overrides.
+docker-compose.local.yml
+docker-compose.override.yml
+docker-compose.override.yaml
+.docker/
+
+# ── Database ─────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Scanner Outputs (temporary) ──────────────────────────────
+/tmp/scan_*
+/tmp/nuclei_*
+/tmp/zap_*
+/tmp/openvas_*
+scanner-output/
+
+# ── Reports (generated PDFs) ─────────────────────────────────
+reports/*.pdf
+*.generated.pdf
+
+# ── SSL Certificates (managed by certbot) ────────────────────
+nginx/certs/
+letsencrypt/
+acme-challenge/
+
+# ── Wazuh / Greenbone runtime data ───────────────────────────
+oss-stack/wazuh/config/certs/
+oss-stack/wazuh/data/
+oss-stack/greenbone/data/
+oss-stack/greenbone/feeds/
+
+# ── Python build artefacts per Dockerfile multi-stage ────────
+.dockerignore-local
+
+# ── OS cruft ─────────────────────────────────────────────────
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+desktop.ini
+
+# ── Exports / local dumps ────────────────────────────────────
+dumps/
+*.sql.gz
+*.dump

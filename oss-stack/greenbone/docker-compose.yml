@@ -1,0 +1,172 @@
+# ============================================================
+# Greenbone Community Edition — for SecureSync OpenVAS scans
+# ============================================================
+#
+# This is a SLIM version of the official Greenbone compose. It contains the
+# minimum services to run scans + expose GMP over TLS (port 9390) on the
+# `scanner-net` network so the SecureSync platform can reach it.
+#
+# First-run cost: feed sync takes ~30–60 minutes and downloads ~1 GB of NVTs.
+# Scans cannot run until that completes.
+#
+# Reference: https://greenbone.github.io/docs/latest/22.4/container/
+#
+# Bring up:
+#   cd oss-stack/greenbone
+#   docker compose up -d
+#   # wait for feed sync (watch logs of `gvmd`):
+#   docker compose logs -f gvmd
+#
+# Default credentials (CHANGE before production):
+#   user: admin
+#   pass: ${GREENBONE_PASSWORD}  (defaults to "admin" in dev)
+# ============================================================
+
+networks:
+  scanner-net:
+    external: true
+    name: securesync_scanner-net
+
+volumes:
+  gvmd_data:
+  gvmd_socket:
+  scap_data:
+  cert_data:
+  data_objects:
+  notus_data:
+  psql_data:
+  psql_socket:
+  redis_socket:
+  openvas_data:
+  openvas_log_data:
+  ospd_openvas_socket:
+
+services:
+
+  # ── PostgreSQL for gvmd ─────────────────────────────────────
+  postgres:
+    image: registry.community.greenbone.net/community/community-postgres:stable
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gvmd
+      # Required — no default. Compose refuses to start if unset.
+      POSTGRES_PASSWORD: ${GREENBONE_PG_PASSWORD:?set GREENBONE_PG_PASSWORD in your .env}
+    volumes:
+      - psql_data:/var/lib/postgresql/data
+      - psql_socket:/var/run/postgresql
+    networks:
+      - scanner-net
+
+  # ── Redis for ospd-openvas ──────────────────────────────────
+  redis:
+    image: registry.community.greenbone.net/community/redis-server:stable
+    restart: unless-stopped
+    volumes:
+      - redis_socket:/run/redis/
+    networks:
+      - scanner-net
+
+  # ── Vulnerability Manager (GMP server) ──────────────────────
+  gvmd:
+    image: registry.community.greenbone.net/community/gvmd:stable
+    restart: unless-stopped
+    environment:
+      GVMD_USER: admin
+      # Required — no default. Running with "admin/admin" in production
+      # would be an open door into your vulnerability scanner.
+      GVMD_PASSWORD: ${GREENBONE_PASSWORD:?set GREENBONE_PASSWORD in your .env}
+    volumes:
+      - gvmd_data:/var/lib/gvm
+      - scap_data:/var/lib/gvm/scap-data/
+      - cert_data:/var/lib/gvm/cert-data
+      - data_objects:/var/lib/gvm/data-objects/gvmd
+      - psql_socket:/var/run/postgresql
+      - gvmd_socket:/run/gvmd
+      - ospd_openvas_socket:/run/ospd
+    depends_on:
+      - postgres
+      - ospd-openvas
+    networks:
+      - scanner-net
+    # Expose GMP TLS on host for the SecureSync platform service.
+    # In production, keep this internal-only (remove the ports block).
+    ports:
+      - "9390:9390"
+
+  # ── OpenVAS scanner daemon (OSP-D) ──────────────────────────
+  ospd-openvas:
+    image: registry.community.greenbone.net/community/ospd-openvas:stable
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN  # raw socket scans
+      - NET_RAW
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    volumes:
+      - openvas_data:/etc/openvas
+      - openvas_log_data:/var/log/openvas
+      - ospd_openvas_socket:/run/ospd
+      - redis_socket:/run/redis/
+    networks:
+      - scanner-net
+
+  # ── Notus scanner (package-based CVE matcher) ───────────────
+  notus-scanner:
+    image: registry.community.greenbone.net/community/notus-scanner:stable
+    restart: unless-stopped
+    volumes:
+      - notus_data:/var/lib/notus
+    networks:
+      - scanner-net
+
+  # ── Feed sync containers (run periodically, then idle) ──────
+  vulnerability-tests:
+    image: registry.community.greenbone.net/community/vulnerability-tests:stable
+    volumes:
+      - openvas_data:/mnt
+    networks:
+      - scanner-net
+
+  notus-data:
+    image: registry.community.greenbone.net/community/notus-data:stable
+    volumes:
+      - notus_data:/mnt
+    networks:
+      - scanner-net
+
+  scap-data:
+    image: registry.community.greenbone.net/community/scap-data:stable
+    volumes:
+      - scap_data:/mnt
+    networks:
+      - scanner-net
+
+  cert-bund-data:
+    image: registry.community.greenbone.net/community/cert-bund-data:stable
+    volumes:
+      - cert_data:/mnt
+    networks:
+      - scanner-net
+
+  dfn-cert-data:
+    image: registry.community.greenbone.net/community/dfn-cert-data:stable
+    volumes:
+      - cert_data:/mnt
+    networks:
+      - scanner-net
+
+  data-objects:
+    image: registry.community.greenbone.net/community/data-objects:stable
+    volumes:
+      - data_objects:/mnt
+    networks:
+      - scanner-net
+
+  report-formats:
+    image: registry.community.greenbone.net/community/report-formats:stable
+    volumes:
+      - data_objects:/mnt
+    networks:
+      - scanner-net

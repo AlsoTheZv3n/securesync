@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  /* ── WeasyPrint-scoped CSS ──
+     No external fonts (WeasyPrint fetches them at print-time; fonts missing
+     means a broken PDF). Fall back to the system stack. */
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+    @bottom-right {
+      content: counter(page) " / " counter(pages);
+      font-size: 9pt;
+      color: #64748B;
+    }
+    @bottom-left {
+      content: "{{ footer | default('Confidential') }}";
+      font-size: 9pt;
+      color: #64748B;
+    }
+  }
+
+  :root {
+    --color-primary: {{ branding.primary_color | default('#3B82F6') }};
+    --color-text: #0F172A;
+    --color-muted: #64748B;
+    --color-border: #E2E8F0;
+    --color-critical: #FF2D55;
+    --color-high: #FF6B35;
+    --color-medium: #FFB800;
+    --color-low: #3B82F6;
+    --color-info: #64748B;
+    --color-grade-a: #10B981;
+    --color-grade-b: #84CC16;
+    --color-grade-c: #F59E0B;
+    --color-grade-d: #F97316;
+    --color-grade-e: #EF4444;
+    --color-grade-f: #7F1D1D;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--color-text);
+    font-size: 10pt;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  h1 { font-size: 24pt; font-weight: 700; margin: 0 0 6pt 0; color: var(--color-text); }
+  h2 { font-size: 16pt; font-weight: 600; margin: 24pt 0 8pt 0; color: var(--color-primary); border-bottom: 1pt solid var(--color-border); padding-bottom: 4pt; }
+  h3 { font-size: 12pt; font-weight: 600; margin: 12pt 0 4pt 0; }
+
+  /* Cover */
+  .cover { page-break-after: always; display: block; text-align: left; }
+  .cover .logo { max-height: 40pt; margin-bottom: 24pt; }
+  .cover .kicker { font-size: 10pt; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6pt; }
+  .cover .meta { margin-top: 32pt; color: var(--color-muted); font-size: 10pt; }
+  .cover .meta div { margin: 2pt 0; }
+
+  /* Rating badge */
+  .rating-badge {
+    display: inline-block;
+    width: 80pt; height: 80pt;
+    border-radius: 50%;
+    border: 6pt solid var(--badge-color);
+    text-align: center;
+    line-height: 68pt;
+    font-size: 40pt;
+    font-weight: 700;
+    color: var(--badge-color);
+  }
+
+  /* Category bars */
+  .category-grid { display: table; width: 100%; margin-top: 8pt; }
+  .category-row { display: table-row; }
+  .category-row > div { display: table-cell; padding: 3pt 6pt; vertical-align: middle; }
+  .category-name { width: 40%; }
+  .category-bar { width: 50%; }
+  .category-score { width: 10%; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-outer { background: var(--color-border); height: 8pt; border-radius: 2pt; }
+  .bar-inner { background: var(--color-primary); height: 8pt; border-radius: 2pt; }
+
+  /* Findings */
+  table.findings { width: 100%; border-collapse: collapse; margin-top: 6pt; font-size: 9pt; }
+  table.findings th, table.findings td { padding: 4pt 6pt; text-align: left; vertical-align: top; border-bottom: 0.5pt solid var(--color-border); }
+  table.findings th { background: #F8FAFC; font-weight: 600; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted); }
+  table.findings td.sev { font-weight: 600; text-transform: uppercase; font-size: 8pt; }
+  .sev-critical { color: var(--color-critical); }
+  .sev-high     { color: var(--color-high); }
+  .sev-medium   { color: var(--color-medium); }
+  .sev-low      { color: var(--color-low); }
+  .sev-info     { color: var(--color-info); }
+
+  code { font-family: 'Consolas', 'Menlo', monospace; font-size: 8pt; background: #F1F5F9; padding: 0 3pt; border-radius: 2pt; }
+  .muted { color: var(--color-muted); font-size: 9pt; }
+  ul.recs { padding-left: 16pt; margin-top: 4pt; }
+  ul.recs li { margin-bottom: 4pt; }
+</style>
+</head>
+<body>
+{% block body %}{% endblock %}
+</body>
+</html>

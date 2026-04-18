@@ -1,0 +1,218 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+
+  # ──────────────────────────────────────────────
+  # BACKEND: Lint + Test
+  # ──────────────────────────────────────────────
+  backend:
+    name: Backend CI
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: securesync_test
+          POSTGRES_USER: securesync
+          POSTGRES_PASSWORD: testpassword
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install system deps for WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcairo2 libpango-1.0-0 libpangoft2-1.0-0 \
+            libgdk-pixbuf-2.0-0 libffi-dev
+
+      - name: Install Python deps
+        working-directory: ./platform
+        run: |
+          pip install uv
+          uv pip install --system -e ".[dev]"
+
+      - name: Enable pgcrypto extension
+        run: |
+          PGPASSWORD=testpassword psql -h localhost -U securesync \
+            -d securesync_test -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Ruff lint
+        working-directory: ./platform
+        run: ruff check app/ tests/
+
+      - name: Ruff format check
+        working-directory: ./platform
+        run: ruff format --check app/ tests/
+
+      - name: Pytest with coverage
+        working-directory: ./platform
+        env:
+          # Tests use the TEST_* vars; the conftest picks them up.
+          TEST_DATABASE_URL: postgresql+psycopg://securesync:testpassword@localhost:5432/securesync_test
+          TEST_REDIS_URL: redis://localhost:6379/0
+          # Non-test config (picked up by Pydantic Settings during app import).
+          DATABASE_URL: postgresql+psycopg://securesync:testpassword@localhost:5432/securesync_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: ci-test-secret-key-not-for-production-use
+          JWT_ALGORITHM: HS256
+          ENVIRONMENT: development
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          file: ./platform/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: Lint + Build (skips until scaffolded)
+  # ──────────────────────────────────────────────
+  frontend:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if frontend scaffolded
+        id: check
+        run: |
+          if [ -f frontend/package.json ]; then
+            echo "scaffolded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scaffolded=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::frontend/ not yet scaffolded — run 'npx create-next-app@14 . --typescript --tailwind --app --src-dir' inside frontend/"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check.outputs.scaffolded == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        if: steps.check.outputs.scaffolded == 'true'
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: ESLint
+        if: steps.check.outputs.scaffolded == 'true'
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Next.js build
+        if: steps.check.outputs.scaffolded == 'true'
+        working-directory: ./frontend
+        env:
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-test-nextauth-secret
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm run build
+
+  # ──────────────────────────────────────────────
+  # E2E (Playwright) — only on main/develop once both sides scaffolded
+  # ──────────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if frontend not scaffolded
+        id: gate
+        run: |
+          if [ -f frontend/package.json ] && [ -f frontend/playwright.config.ts ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping E2E — frontend/playwright not scaffolded yet"
+          fi
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Start stack
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          cp .env.example .env
+          sed -i 's/POSTGRES_PASSWORD=/POSTGRES_PASSWORD=testpassword/' .env
+          sed -i 's/REDIS_PASSWORD=/REDIS_PASSWORD=testpassword/' .env
+          sed -i 's/SECRET_KEY=/SECRET_KEY=ci-test-secret-32-chars-long-key/' .env
+          sed -i 's/NEXTAUTH_SECRET=/NEXTAUTH_SECRET=ci-test-nextauth-secret/' .env
+          sed -i 's/ZAP_API_KEY=/ZAP_API_KEY=ci-test-zap-key/' .env
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+            up -d postgres redis platform frontend
+          sleep 30
+
+      - name: Install Playwright
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: ./frontend
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.gate.outputs.ready == 'true'
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+
+      - name: Teardown
+        if: always() && steps.gate.outputs.ready == 'true'
+        run: docker compose down -v

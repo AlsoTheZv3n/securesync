@@ -1,0 +1,100 @@
+{% extends "_base.html" %}
+{% block body %}
+
+{# ── Cover ── #}
+<section class="cover">
+  {% if branding.logo_url %}
+    <img class="logo" src="{{ branding.logo_url }}" alt="{{ tenant.name }} logo" />
+  {% endif %}
+  <div class="kicker">Technical Report</div>
+  <h1>{{ tenant.name }}</h1>
+  <div class="meta">
+    <div><strong>Report type:</strong> Technical — full detail</div>
+    <div><strong>Date:</strong> {{ generated_at_str }}</div>
+    <div><strong>Scan period:</strong> {{ scan_period_str }}</div>
+    <div><strong>Total open findings:</strong> {{ findings | length }}</div>
+  </div>
+</section>
+
+{# ── Rating summary (short) ── #}
+<section>
+  <h2>Rating</h2>
+  <p>
+    Overall grade <strong>{{ rating.overall_grade.value }}</strong>
+    — {{ rating.overall_score }} / 100.
+    {% if previous_rating %}
+      (Previous: {{ previous_rating.overall_grade.value }} @ {{ previous_rating.overall_score }}.)
+    {% endif %}
+  </p>
+  <table style="width:100%; margin-top:4pt;" class="findings">
+    <tr><th style="width:50%;">Category</th><th>Score</th></tr>
+    {% for row in categories %}
+    <tr><td>{{ row.label }}</td><td>{{ row.score }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+{# ── Full findings table ── #}
+<section>
+  <h2>All Open Findings</h2>
+  {% if findings %}
+  <table class="findings">
+    <thead>
+      <tr>
+        <th>Sev</th>
+        <th>Title</th>
+        <th>Asset</th>
+        <th>CVE</th>
+        <th>CVSS</th>
+        <th>EPSS</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</td>
+        <td>{{ f.title }}</td>
+        <td class="muted">{{ f.asset_display }}</td>
+        <td>{% if f.cve_id %}<code>{{ f.cve_id }}</code>{% else %}—{% endif %}</td>
+        <td>{% if f.cvss_score is not none %}{{ f.cvss_score }}{% else %}—{% endif %}</td>
+        <td>{% if f.epss_score is not none %}{{ f.epss_score }}{% else %}—{% endif %}</td>
+        <td class="muted">{{ f.source.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No open findings.</p>
+  {% endif %}
+</section>
+
+{# ── Evidence + remediation (detail) ── #}
+{% if findings %}
+<section>
+  <h2>Finding Details</h2>
+  {% for f in findings %}
+  <div style="margin-bottom: 14pt; page-break-inside: avoid;">
+    <h3 style="margin-bottom:2pt;">
+      <span class="sev sev-{{ f.severity.value }}">[{{ f.severity.value | upper }}]</span>
+      {{ f.title }}
+    </h3>
+    <div class="muted" style="margin-bottom:4pt;">
+      {% if f.cve_id %}<code>{{ f.cve_id }}</code> · {% endif %}
+      {{ f.source.value }} · {{ f.asset_display }}
+    </div>
+    {% if f.description %}
+    <div style="margin-top:4pt;"><strong>Description:</strong> {{ f.description }}</div>
+    {% endif %}
+    {% if f.remediation %}
+    <div style="margin-top:4pt;"><strong>Remediation:</strong> {{ f.remediation }}</div>
+    {% endif %}
+    {% if f.evidence %}
+    <div style="margin-top:4pt;"><strong>Evidence:</strong> <code>{{ f.evidence }}</code></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,68 @@
+# ============================================================
+# SecureSync — Local Development Stack
+# ============================================================
+# Brings up only PostgreSQL + Redis so you can run FastAPI and
+# Next.js directly on the host (faster iteration, hot reload).
+#
+# Scanner stack (Wazuh, Greenbone, ZAP, DefectDojo) is launched
+# separately — see oss-stack/<tool>/docker-compose.yml.
+#
+# Usage:
+#   cp .env.example .env       # fill in passwords
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd platform && uvicorn app.main:app --reload
+#   cd frontend && npm run dev
+# ============================================================
+
+networks:
+  securesync-dev:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: securesync-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-securesync}
+      POSTGRES_USER: ${POSTGRES_USER:-securesync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securesync_dev_password}
+    ports:
+      # Host port 55432 to avoid clashing with a system-level Postgres
+      # (XAMPP or pre-installed) on the default 5432.
+      - "55432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - securesync-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securesync}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: securesync-redis-dev
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-securesync_dev_password}
+      --appendonly yes
+    ports:
+      # Host port 56379 to avoid a possible system-level Redis on 6379.
+      - "56379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - securesync-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-securesync_dev_password}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

@@ -232,12 +232,3 @@ Follows a 5-phase roadmap in [docs/phases.md](docs/phases.md):
 4. For new integrations / endpoints, add both a unit test (pure logic)
    and an integration test (API contract). Aim for ≥ 80 % coverage on
    `app/services/` and `app/api/`.
-
----
-
-## License
-
-© NEXO AI. All rights reserved.
-Not yet released under an open-source licence — contact the NEXO AI team
-before use.
-# securesync

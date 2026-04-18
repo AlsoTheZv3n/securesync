@@ -1,0 +1,264 @@
+version: "3.9"
+
+# ============================================================
+# SecureSync — NEXO AI
+# Production Docker Compose
+# ============================================================
+
+networks:
+  securesync-internal:
+    driver: bridge
+  scanner-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  greenbone_data:
+  defectdojo_data:
+  wazuh_data:
+  wazuh_logs:
+  nginx_certs:
+
+services:
+
+  # ──────────────────────────────────────────
+  # PLATFORM API (FastAPI)
+  # ──────────────────────────────────────────
+  platform:
+    build:
+      context: ./platform
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      WAZUH_API_URL: ${WAZUH_API_URL}
+      WAZUH_USERNAME: ${WAZUH_USERNAME}
+      WAZUH_PASSWORD: ${WAZUH_PASSWORD}
+      GREENBONE_HOST: greenbone-gvmd
+      GREENBONE_USERNAME: ${GREENBONE_USERNAME}
+      GREENBONE_PASSWORD: ${GREENBONE_PASSWORD}
+      ZAP_URL: http://zap:8080
+      ZAP_API_KEY: ${ZAP_API_KEY}
+      DEFECTDOJO_URL: http://defectdojo:8080
+      DEFECTDOJO_API_KEY: ${DEFECTDOJO_API_KEY}
+      EPSS_API_URL: https://api.first.org/data/v1
+      HIBP_API_KEY: ${HIBP_API_KEY}
+      NVD_API_KEY: ${NVD_API_KEY}
+      NINJAONE_CLIENT_ID: ${NINJAONE_CLIENT_ID}
+      NINJAONE_CLIENT_SECRET: ${NINJAONE_CLIENT_SECRET}
+      NINJAONE_API_URL: ${NINJAONE_API_URL}
+      ENVIRONMENT: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - securesync-internal
+      - scanner-net
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ──────────────────────────────────────────
+  # CELERY WORKER
+  # ──────────────────────────────────────────
+  celery-worker:
+    build:
+      context: ./platform
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      WAZUH_API_URL: ${WAZUH_API_URL}
+      WAZUH_USERNAME: ${WAZUH_USERNAME}
+      WAZUH_PASSWORD: ${WAZUH_PASSWORD}
+      GREENBONE_HOST: greenbone-gvmd
+      GREENBONE_USERNAME: ${GREENBONE_USERNAME}
+      GREENBONE_PASSWORD: ${GREENBONE_PASSWORD}
+      ZAP_URL: http://zap:8080
+      ZAP_API_KEY: ${ZAP_API_KEY}
+      DEFECTDOJO_URL: http://defectdojo:8080
+      DEFECTDOJO_API_KEY: ${DEFECTDOJO_API_KEY}
+      EPSS_API_URL: https://api.first.org/data/v1
+      HIBP_API_KEY: ${HIBP_API_KEY}
+      NVD_API_KEY: ${NVD_API_KEY}
+      NINJAONE_CLIENT_ID: ${NINJAONE_CLIENT_ID}
+      NINJAONE_CLIENT_SECRET: ${NINJAONE_CLIENT_SECRET}
+      NINJAONE_API_URL: ${NINJAONE_API_URL}
+    depends_on:
+      - postgres
+      - redis
+      - platform
+    networks:
+      - securesync-internal
+      - scanner-net
+
+  # ──────────────────────────────────────────
+  # CELERY BEAT (Scheduler)
+  # ──────────────────────────────────────────
+  celery-beat:
+    build:
+      context: ./platform
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info --scheduler=apscheduler.schedulers.background:BackgroundScheduler
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - securesync-internal
+
+  # ──────────────────────────────────────────
+  # FRONTEND (Next.js)
+  # ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    expose:
+      - "3000"
+    depends_on:
+      - platform
+    networks:
+      - securesync-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ──────────────────────────────────────────
+  # POSTGRESQL
+  # ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-securesync}
+      POSTGRES_USER: ${POSTGRES_USER:-securesync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - securesync-internal
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securesync}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────
+  # REDIS
+  # ──────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - securesync-internal
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────
+  # NGINX (Reverse Proxy + SSL)
+  # ──────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_certs:/etc/letsencrypt
+    depends_on:
+      - platform
+      - frontend
+    networks:
+      - securesync-internal
+
+  # ──────────────────────────────────────────
+  # OWASP ZAP (DAST Scanner)
+  # ──────────────────────────────────────────
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    restart: unless-stopped
+    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.key=${ZAP_API_KEY}
+    expose:
+      - "8080"
+    networks:
+      - scanner-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/JSON/core/view/version/?apikey=${ZAP_API_KEY}"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+
+  # ──────────────────────────────────────────
+  # DEFECTDOJO (Vulnerability Aggregator)
+  # ──────────────────────────────────────────
+  defectdojo:
+    image: defectdojo/defectdojo-django:latest
+    restart: unless-stopped
+    environment:
+      DD_DATABASE_URL: ${DEFECTDOJO_DATABASE_URL}
+      DD_SECRET_KEY: ${DEFECTDOJO_SECRET_KEY}
+      DD_CREDENTIAL_AES_256_KEY: ${DEFECTDOJO_AES_KEY}
+      DD_ALLOWED_HOSTS: "*"
+    volumes:
+      - defectdojo_data:/app/media
+    expose:
+      - "8080"
+    depends_on:
+      - postgres
+    networks:
+      - securesync-internal
+      - scanner-net
+
+  # ──────────────────────────────────────────
+  # GREENBONE / OPENVAS (Network Scanner)
+  # Note: Greenbone requires separate compose due to complexity
+  # See oss-stack/greenbone/docker-compose.yml
+  # ──────────────────────────────────────────
+  # Uncomment after greenbone stack is running separately:
+  # greenbone-proxy:
+  #   image: nginx:alpine
+  #   networks:
+  #     - scanner-net
+
+  # ──────────────────────────────────────────
+  # NUCLEI (runs as ephemeral container per scan)
+  # Managed by Celery worker via Docker SDK
+  # ──────────────────────────────────────────

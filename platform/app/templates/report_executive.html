@@ -1,0 +1,102 @@
+{% extends "_base.html" %}
+{% block body %}
+
+{# ── Cover ── #}
+<section class="cover">
+  {% if branding.logo_url %}
+    <img class="logo" src="{{ branding.logo_url }}" alt="{{ tenant.name }} logo" />
+  {% endif %}
+  <div class="kicker">Security Assessment</div>
+  <h1>{{ tenant.name }}</h1>
+  <div class="meta">
+    <div><strong>Report type:</strong> Executive summary</div>
+    <div><strong>Date:</strong> {{ generated_at_str }}</div>
+    <div><strong>Scan period:</strong> {{ scan_period_str }}</div>
+    <div><strong>Prepared by:</strong> {{ branding.msp_name | default('NEXO AI SecureSync') }}</div>
+  </div>
+</section>
+
+{# ── Rating summary ── #}
+<section>
+  <h2>Security Rating</h2>
+  <table style="width:100%; border-collapse:collapse; margin-top:8pt;">
+    <tr>
+      <td style="width:30%; vertical-align:top;">
+        <div class="rating-badge" style="--badge-color: {{ grade_color }};">
+          {{ rating.overall_grade.value }}
+        </div>
+      </td>
+      <td style="vertical-align:top; padding-left:12pt;">
+        <div style="font-size:11pt;"><strong>Overall score:</strong> {{ rating.overall_score }} / 100</div>
+        <div class="muted" style="margin-top:4pt;">
+          {% if previous_rating %}
+            Previous rating: {{ previous_rating.overall_grade.value }}
+            ({{ previous_rating.overall_score }} / 100, {{ rating_delta_str }}).
+          {% else %}
+            First rating for this tenant — no baseline available yet.
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <h3 style="margin-top:24pt;">Category Breakdown</h3>
+  <div class="category-grid">
+    {% for row in categories %}
+    <div class="category-row">
+      <div class="category-name">{{ row.label }}</div>
+      <div class="category-bar">
+        <div class="bar-outer">
+          <div class="bar-inner" style="width: {{ row.score }}%;"></div>
+        </div>
+      </div>
+      <div class="category-score">{{ row.score }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{# ── Top findings ── #}
+<section>
+  <h2>Top {{ top_findings | length }} Findings</h2>
+  {% if top_findings %}
+  <table class="findings">
+    <thead>
+      <tr>
+        <th>Severity</th>
+        <th>Title</th>
+        <th>Asset</th>
+        <th>CVE</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in top_findings %}
+      <tr>
+        <td class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</td>
+        <td>{{ f.title }}</td>
+        <td class="muted">{{ f.asset_display }}</td>
+        <td>{% if f.cve_id %}<code>{{ f.cve_id }}</code>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No open findings in this report.</p>
+  {% endif %}
+</section>
+
+{# ── Recommendations ── #}
+<section>
+  <h2>Recommendations</h2>
+  {% if recommendations %}
+  <ul class="recs">
+    {% for r in recommendations %}
+    <li>{{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No critical actions required — maintain your current security posture and continue scheduled scans.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

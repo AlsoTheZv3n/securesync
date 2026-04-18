@@ -1,0 +1,87 @@
+# ============================================================
+# Per-Tenant White-Label Vhost Template
+# ============================================================
+#
+# Rendered by infra/nginx/generate_vhosts.py for every tenant whose
+# `custom_domain_verified = true`. One file per tenant:
+#
+#     /etc/nginx/conf.d/tenant-<slug>.conf
+#
+# Substitutions the generator performs:
+#
+#     {{TENANT_DOMAIN}}     e.g. customer.acme-corp.ch
+#     {{TENANT_SLUG}}       e.g. acme-corp     (used for cert filename only)
+#     {{CERT_PATH}}         /etc/letsencrypt/live/<domain>/fullchain.pem
+#     {{KEY_PATH}}          /etc/letsencrypt/live/<domain>/privkey.pem
+#
+# The upstream name ("platform" / "frontend") must match the docker-compose
+# service names — do NOT hardcode IPs here.
+# ============================================================
+
+# HTTP → HTTPS redirect for this tenant domain (+ ACME challenge).
+server {
+    listen 80;
+    server_name {{TENANT_DOMAIN}};
+
+    # Let's Encrypt HTTP-01 challenge webroot.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS vhost.
+server {
+    listen 443 ssl http2;
+    server_name {{TENANT_DOMAIN}};
+
+    ssl_certificate     {{CERT_PATH}};
+    ssl_certificate_key {{KEY_PATH}};
+
+    # Inherit the TLS hardening from the main nginx.conf block — same
+    # protocols, ciphers, stapling, HSTS, CSP. Nothing to duplicate here.
+
+    # Tell the backend which host the client used so the app can resolve
+    # tenant-from-host and apply correct branding.
+    proxy_set_header X-Forwarded-Host $host;
+
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://platform:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 10s;
+    }
+
+    location /api/v1/auth/login {
+        limit_req zone=auth burst=5 nodelay;
+        proxy_pass http://platform:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /_next/static/ {
+        proxy_pass http://frontend:3000;
+        proxy_cache_valid 200 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
